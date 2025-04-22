@@ -23,7 +23,7 @@ module.exports = {
     if (message.author.bot) return;
 
     const userId = message.author.id;
-    const mintKeywords = ['mint', 'chocomint', 'ミント', 'チョコミント', 'みんと', 'ちょこみんと', 'bot', 'ボット'];
+    const mintKeywords = ['mint', 'chocomint', 'ミント', 'チョコミント', 'みんと', 'ちょこみんと'];
 
     console_said(message.content, message.author.username);
     
