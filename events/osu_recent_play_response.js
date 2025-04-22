@@ -9,6 +9,8 @@ const { buildEmbed } = require('../utilities/recent_play_embed');
 
 const triggerKeywords = ['!recent', '-recent', 'recent', 'rs', '最近プレイ', '最近'];
 
+const { console_said } = require('../utilities/console');
+
 module.exports = {
   name: 'messageCreate',
   async execute(message) {
@@ -21,6 +23,8 @@ module.exports = {
     let username = args.slice(1).join(' ') || null;
 
     const discordId = message.author.id;
+
+    console_said(message.content, message.author.username);
 
     if (!username) {
       const userData = await getUserByDiscordId(discordId);

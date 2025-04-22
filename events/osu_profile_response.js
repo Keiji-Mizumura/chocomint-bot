@@ -4,6 +4,7 @@ const { EmbedBuilder } = require('discord.js');
 const { getProgressBarColor } = require('../utilities/rankdetails');
 const { loadProfileDisplay } = require('../utilities/profile_display');
 
+const { console_said } = require('../utilities/console');
 
 const { getAccessToken, getUser, getUserScore } = require('../utilities/osu_api');
 
@@ -36,7 +37,7 @@ module.exports = {
     const discordId = message.author.id;
     const userName = message.author.username;
     const userData = await getUserByDiscordId(discordId);
-    console.log(`${userName} typed ${content}`);
+    console_said(content, userName);
 
     if (!userData) {
       return message.reply("あなたは登録されていません。登録するには `/register <osu!ユーザー名>` を使用してください。");

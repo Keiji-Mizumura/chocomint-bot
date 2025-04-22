@@ -1,9 +1,12 @@
+require('dotenv').config();
+
 const { doc, getDoc, setDoc } = require('firebase/firestore');
 const { db } = require('../firebase/config');
 const OpenAI = require('openai');
-require('dotenv').config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+const { console_said } = require('../utilities/console');
 
 function getRandomDelay(minMs, maxMs) {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
@@ -21,6 +24,8 @@ module.exports = {
 
     const userId = message.author.id;
     const mintKeywords = ['mint', 'chocomint', 'ミント', 'チョコミント', 'みんと', 'ちょこみんと', 'bot', 'ボット'];
+
+    console_said(message.content, message.author.username);
     
     const isInAllowedChannel = allowedChannelIds.includes(message.channel.id);
 
