@@ -3,24 +3,17 @@ const OpenAI = require('openai');
 const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const { console_said } = require('../utilities/console');
+const { commandToModeMap, recentCommands } = require('../utilities/message_commands');
 
-// Load Pinecone configuration from env, with fallbacks
+// Load Pinecone configuration from env
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY_ARROGANT || process.env.PINECONE_API_KEY;
 const PINECONE_INDEX_URL = process.env.PINECONE_INDEX_URL_ARROGANT || process.env.PINECONE_INDEX_URL;
-
-// Servers (guilds) where this bot is active
-const allowedGuildIds = ['580025947055587330']; // replace with English server ID
-// Optional: limit to specific channels within the guild
-const allowedChannelIds = ['1364184297971388468'];
-
-// Debug Pinecone config
-console.log(`[Pinecone Config] URL=${PINECONE_INDEX_URL}, Key=${PINECONE_API_KEY ? 'SET' : 'MISSING'}`);
-
 const USE_DUMMY_EMBEDDING = true;
-const recentConversations = new Map(); // channelId → [{ role, content }]
 
-// Keywords to trigger when not mentioned directly
-const mintKeywords = ['mint','chocomint','ミント','チョコミント','みんと','ちょこみんと'];
+// Bot activation settings
+const allowedGuildIds = ['580025947055587330', '1156056863360688219'];
+const allowedChannelIds = ['1364184297971388468', '1364336585952464926'];
+const recentConversations = new Map(); // channelId -> [{ role, content }]
 
 function getRandomDelay(minMs, maxMs) {
   return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
@@ -40,11 +33,12 @@ async function getEmbedding(text) {
 async function addToPinecone(userId, username, topic, memory) {
   if (!PINECONE_API_KEY || !PINECONE_INDEX_URL) return;
   const vector = await getEmbedding(memory);
-  const vectorId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-  const body = { vectors: [{ id: vectorId, values: vector, metadata: { bot: 'arrogant', userId, username, topic, text: memory.slice(0, 500) } }] };
+  const vectorId = `${userId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const body = { vectors: [{ id: vectorId, values: vector, metadata: { userId, username, topic, text: memory.slice(0, 500) } }] };
   try {
     await axios.post(
-      `${PINECONE_INDEX_URL}/vectors/upsert`, body,
+      `${PINECONE_INDEX_URL}/vectors/upsert`,
+      body,
       { headers: { 'Api-Key': PINECONE_API_KEY, 'Content-Type': 'application/json' } }
     );
   } catch (err) {
@@ -54,11 +48,12 @@ async function addToPinecone(userId, username, topic, memory) {
 
 async function queryPinecone(queryText, options = {}) {
   if (!PINECONE_API_KEY || !PINECONE_INDEX_URL) return [];
-  const { userId = null, targetUsername = null } = options;
+  const { userId = null, includeGlobal = true, targetUsername = null } = options;
   const vector = await getEmbedding(queryText);
-  let filter = { bot: { $eq: 'arrogant' } };
+  let filter = {};
   if (targetUsername) filter.username = { $eq: targetUsername };
-  if (userId) filter.userId = userId;
+  else if (userId && !includeGlobal) filter.userId = userId;
+  else if (userId) filter = { $or: [{ userId }, { userId: { $exists: true } }] };
   try {
     const res = await axios.post(
       `${PINECONE_INDEX_URL}/query`,
@@ -77,88 +72,133 @@ module.exports = {
   async execute(message) {
     if (message.author.bot) return;
 
-    // Guild check
+    // Guild & channel checks
     const guildId = message.guild?.id;
     if (!guildId || !allowedGuildIds.includes(guildId)) return;
 
     const userId = message.author.id;
     const username = message.author.username;
-    const channelId = message.channel.id;
-    const content = message.content.trim();
+    const channel = message.channel;
+    const channelId = channel.id;
+    const mintKeywords = ['mint', 'chocomint'];
 
-    console_said(content, username);
+    if (Object.keys(commandToModeMap).includes(message.content.toLowerCase())) return;
+    if (recentCommands.some(keyword => message.content.toLowerCase().startsWith(keyword))) return;
 
-    // Channel, mention or keyword check
-    const isInAllowedChannel = allowedChannelIds.includes(channelId);
+    console_said(message.content, username);
+
+    // Trigger logic: allowed channel, mention, reply, or keyword
+    const parentId = channel.isThread ? channel.parentId : null;
+    const isInAllowed = allowedChannelIds.includes(channelId) || (parentId && allowedChannelIds.includes(parentId));
     const isMentioned = message.mentions.has(message.client.user.id);
-    const saidMint = mintKeywords.some(kw => content.toLowerCase().includes(kw));
-    if (!isInAllowedChannel && !isMentioned && !saidMint) return;
+    const isReplyToBot = message.reference && (await channel.messages.fetch(message.reference.messageId))?.author.id === message.client.user.id;
+    const saidMint = mintKeywords.some(kw => message.content.toLowerCase().includes(kw));
+    if (!(isInAllowed || isMentioned || isReplyToBot || saidMint)) return;
 
-    // Debug memory command
-    if (content === '!memories') {
-      const mems = await queryPinecone('', { userId });
-      const reply = mems.length ? mems.map(m => `- ${m.topic}: ${m.text}`).join('\n') : 'No memories found.';
-      return message.reply(reply);
+    // Show memories command
+    if (message.content === '!memories') {
+      const mems = await queryPinecone('', { userId, includeGlobal: false });
+      const resp = mems.length
+        ? mems.map(m => `- [${m.topic}] ${m.text}`).join('\n')
+        : "Looks like I don't have any memories yet.";
+      return message.reply(resp);
     }
 
-    // Detect image attachment
-    const imageAttachment = message.attachments.find(att => att.contentType?.startsWith('image/'));
+    // Image generation (English)
+    if (/image|illustration/i.test(message.content)) {
+      let raw = message.content.replace(/chocomint/gi, '').replace(/image|illustration/gi, '').replace(/please|pls/gi, '').trim();
+      const userPrompt = raw || 'cute illustration';
+      const prompt = `High-quality illustration, vibrant colors, detailed: ${userPrompt}`;
+      try {
+        await channel.sendTyping();
+        const imgRes = await openai.images.generate({ prompt, n: 1, size: '512x512' });
+        const imageUrl = imgRes.data[0].url;
+        return message.reply({ content: `How about this?\n${prompt}`, embeds: [{ image: { url: imageUrl } }] });
+      } catch (err) {
+        console.error('[ImageGen Error]', err);
+        return message.reply("Image generation failed, sorry!");
+      }
+    }
 
+    // Chat response (text + optional image)
     try {
-      // Long-term memory retrieval
-      const mems = await queryPinecone(username, { userId });
-      const summary = mems.length ? mems.map(m => `> ${m.text}`).join('\n') : '';
+      // Handle time queries
+      const now = new Date();
+      if (/yesterday.*time/i.test(message.content)) {
+        const then = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const thenTime = then.toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Manila' });
+        return message.reply(`24 hours ago, the time was ${thenTime} (Asia/Manila).`);
+      }
+      if (/what time is it|current time|time\?/i.test(message.content)) {
+        const timeString = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Manila' });
+        return message.reply(`The current time is ${timeString} (Asia/Manila).`);
+      }
 
-      // Short-term context buffer
+      // Retrieve memories
+      const pineMem = await queryPinecone(username, { userId, includeGlobal: true });
+      const memSum = pineMem.length
+        ? pineMem.map(m => `* ${m.username} (${m.topic}): ${m.text}`).join('\n')
+        : "I don't know much about you yet...";
+
+      // Short-term conversation context
       let convo = recentConversations.get(channelId) || [];
-      convo.push({ role: 'user', content });
+      convo.push({ role: 'user', content: message.content });
       if (convo.length > 6) convo = convo.slice(-6);
 
-      // Build system + context
-      const messages = [
-        { role: 'system', content:
-            'You are Chocomint, a college student who is arrogant, cold, and highly logical. ' +
-            'You speak English and Tagalog. Replies are concise, critical, and sometimes bored.' +
-            (summary ? `\n\nLong-term memory:\n${summary}` : '')
-        },
-        ...convo
-      ];
+      // Dynamic system prompt with date, time & address
+      const dateString = now.toLocaleDateString('en-US', { timeZone: 'Asia/Manila' });
+      const timeString = now.toLocaleTimeString('en-US', { hour12: false, timeZone: 'Asia/Manila' });
+      const systemMsg = {
+        role: 'system',
+        content: 
+          `You are Chocomint, living in the year ${now.getFullYear()} on ${dateString} at ${timeString} (Asia/Manila timezone).` +
+          ` You live in Pateros, near the KFC in Metro Manila, Philippines.` +
+          ` You are born wealthy and loves to play video games such as Valorant or League of Legends` +
+          ` You love to spend money on gacha games like Genshin Impact and Honkai Star Rail` +
+          ` You sometimes play osu! but really bad at it and can only clear 4 star maps, but you feel you have the potential if you tried.` +
+          ` You are a college student that is arrogant, cold, and highly logical. You are not a bot even if someone asks you.` +
+          ` You speak English but mostly Tagalog. Responses are concise, critical, and slightly bored.` +
+          ` You also have some dark humor and double standards. Your favorite food is KFC and watermelon with chocomint ice cream.` +
+          `\nMemories:\n${memSum}`
+      };
+      const messages = [systemMsg, ...convo];
 
-      // If image present, add as a separate user message
-      if (imageAttachment) {
-        messages.push({ role: 'user', content: 'Analyze this image critically:', image_url: imageAttachment.url });
-      } else {
-        messages.push({ role: 'user', content });
+      // Include image from user if present
+      const img = message.attachments.find(a => a.contentType?.startsWith('image/'));
+      if (img) {
+        messages.push({ role: 'user', content: [
+          { type: 'text', text: message.content },
+          { type: 'image_url', image_url: { url: img.url, detail: 'auto' } }
+        ] });
       }
 
       // Generate reply
+      await channel.sendTyping();
       const comp = await openai.chat.completions.create({ model: 'gpt-4o', messages });
       const reply = comp.choices[0].message.content.trim();
 
-      // Update context
+      // Update conversation context
       convo.push({ role: 'assistant', content: reply });
       if (convo.length > 6) convo = convo.slice(-6);
       recentConversations.set(channelId, convo);
 
-      // Extract new fact for memory
+      // Extract and store a new memory
       const memComp = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
-          { role: 'system', content: 'Extract one new fact about the user in one concise sentence.' },
+          { role: 'system', content: 'Extract one new fact about the user from this conversation in one sentence.' },
           ...messages.slice(-6)
         ]
       });
       const newFact = memComp.choices[0].message.content.trim();
       if (newFact.length > 3) await addToPinecone(userId, username, 'user profile', newFact);
 
-      // Typing and reply
-      await new Promise(r => setTimeout(r, getRandomDelay(500, 1500)));
-      await message.channel.sendTyping();
-      await new Promise(r => setTimeout(r, getRandomDelay(500, 1500)));
+      console_said(reply, 'Chocomint');
+      await new Promise(r => setTimeout(r, getRandomDelay(500, 2000)));
       return message.reply(reply);
     } catch (err) {
-      console.error('[ArrogantBot Error]', err);
-      return message.reply('Error occurred.');
+      console.error('[ChatBot Error]', err);
+      return message.reply("Oops, something went wrong... I'll get it next time!");
     }
   }
 };

@@ -7,7 +7,7 @@ const { createCoverAttachment } = require('../utilities/recent_play_cover');
 
 const { buildEmbed } = require('../utilities/recent_play_embed');
 
-const triggerKeywords = ['!recent', '-recent', 'recent', 'rs', '最近プレイ', '最近'];
+const { recentCommands } = require('../utilities/message_commands');
 
 const { console_said } = require('../utilities/console');
 
@@ -15,7 +15,7 @@ module.exports = {
   name: 'messageCreate',
   async execute(message) {
     // Only respond to specific keywords
-    if (message.author.bot || !triggerKeywords.some((keyword) => message.content.toLowerCase().startsWith(keyword))) {
+    if (message.author.bot || !recentCommands.some((keyword) => message.content.toLowerCase().startsWith(keyword))) {
       return;
     }
 

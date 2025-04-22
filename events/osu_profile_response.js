@@ -8,28 +8,14 @@ const { console_said } = require('../utilities/console');
 
 const { getAccessToken, getUser, getUserScore } = require('../utilities/osu_api');
 
+const { commandToModeMap } = require('../utilities/message_commands');
+
 module.exports = {
   name: 'messageCreate',
   async execute(message) {
     if (message.author.bot) return;
 
     const content = message.content.toLowerCase();
-    // Recognizable keywords
-    const commandToModeMap = {
-      'osu!': 'osu',
-      osu: 'osu',
-      std: 'osu',
-
-      'osu!taiko': 'taiko',
-      taiko: 'taiko',
-
-      'osu!catch': 'fruits',
-      catch: 'fruits',
-      ctb: 'fruits',
-
-      'osu!mania': 'mania',
-      mania: 'mania',
-    };
 
     if (!Object.keys(commandToModeMap).includes(content)) return;
 
