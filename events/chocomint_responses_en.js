@@ -11,7 +11,7 @@ const PINECONE_INDEX_URL = process.env.PINECONE_INDEX_URL_ARROGANT || process.en
 // Servers (guilds) where this bot is active
 const allowedGuildIds = ['580025947055587330']; // replace with English server ID
 // Optional: limit to specific channels within the guild
-const allowedChannelIds = ['580025947747516417'];
+const allowedChannelIds = ['1364184297971388468'];
 
 // Debug Pinecone config
 console.log(`[Pinecone Config] URL=${PINECONE_INDEX_URL}, Key=${PINECONE_API_KEY ? 'SET' : 'MISSING'}`);
