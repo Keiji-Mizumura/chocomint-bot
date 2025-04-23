@@ -26,6 +26,9 @@ module.exports = {
     const guildId = message.guild?.id;
     if (!guildId || !allowedGuildIds.includes(guildId)) return;
 
+    const isRunning = message.client.botRunning.get(message.guild.id);
+    if (!isRunning) return;
+
     const userId = message.author.id;
     const username = message.author.username;
     const channel = message.channel;
