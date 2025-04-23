@@ -16,7 +16,7 @@ async function getAccessToken() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_id: process.env.OSU_CLIENT_ID,
-      client_secret: process.env.OSU_CLIENT_SCERET,
+      client_secret: process.env.OSU_CLIENT_SECRET,
       grant_type: 'client_credentials',
       scope: 'public'
     })
