@@ -27,7 +27,6 @@ module.exports = {
     if (!guildId || !allowedGuildIds.includes(guildId)) return;
 
     const isRunning = message.client.botRunning.get(message.guild.id);
-    if (!isRunning) return;
 
     const userId = message.author.id;
     const username = message.author.username;
@@ -36,9 +35,9 @@ module.exports = {
     const channelName = channel.name || '';
     const mintKeywords = ['mint', 'chocomint', 'ミント', 'チョコミント', 'みんと', 'ちょこみんと'];
 
-    if (Object.keys(commandToModeMap).includes(message.content.toLowerCase())) return;
-
     if (recentCommands.some((keyword) => message.content.toLowerCase().startsWith(keyword))) return;
+
+    if (Object.keys(commandToModeMap).includes(message.content.toLowerCase())) return;
 
     const parentId = channel.isThread ? channel.parentId : null;
     const isInAllowed = allowedChannelIds.includes(channelId) || (parentId && allowedChannelIds.includes(parentId));
@@ -46,6 +45,10 @@ module.exports = {
     const isReplyToBot = message.reference && (await channel.messages.fetch(message.reference.messageId))?.author.id === message.client.user.id;
     const saidMint = mintKeywords.some((kw) => message.content.toLowerCase().includes(kw));
     if (!(isInAllowed || isMentioned || isReplyToBot || saidMint)) return;
+
+    if(!isRunning){
+      return await message.reply({content: "Chocomintは現在ミュート中です。話しかけるには `/speak` を使ってください。", ephemeral: true});
+    }
 
     console_said(message.content, username);
 
@@ -133,6 +136,7 @@ ${prompt}`,
       console_said(reply, 'Chocomint');
       await channel.sendTyping();
       await new Promise((r) => setTimeout(r, getRandomDelay(1000, 2000)));
+      console_said(reply, "Chocomint");
       await message.reply(reply);
 
       if(logCh){

@@ -40,7 +40,6 @@ module.exports = {
     if (!message.guild || !allowedGuildIds.includes(message.guild.id)) return;
 
     const isRunning = message.client.botRunning.get(message.guild.id);
-    if (!isRunning) return;
 
     const authorId   = message.author.id;
     const authorName = message.author.username;
@@ -49,8 +48,10 @@ module.exports = {
 
     // Skip if user typed a command
     const contentLower = message.content.toLowerCase();
-    if (Object.keys(commandToModeMap).includes(contentLower)) return;
+    
     if (recentCommands.some(cmd => contentLower.startsWith(cmd))) return;
+
+    if (Object.keys(commandToModeMap).includes(message.content.toLowerCase())) return;    
 
     // Trigger if in allowed channel/thread or mentioned or keyword
     const parentId     = channel.isThread ? channel.parentId : null;
@@ -60,6 +61,10 @@ module.exports = {
       && (await channel.messages.fetch(message.reference.messageId))?.author.id === message.client.user.id;
     const saidMint     = /mint|chocomint/i.test(message.content);
     if (!(inAllowed || isMentioned || isReplyToBot || saidMint)) return;
+
+    if(!isRunning){
+      return await message.reply({content: "Chocomint is currently muted. Use `/speak` to make it talk.", ephemeral: true});
+    }
 
     // Log the user message
     console_said(message.content, authorName);
@@ -148,6 +153,7 @@ module.exports = {
       // 8) Update context & reply
       convo.push({ role: 'assistant', content: reply });
       recentConversations.set(channelId, convo);
+      console_said(reply, "Chocomint");
       await message.reply(reply);
 
       // 9) Extract and store a new memory
@@ -162,7 +168,7 @@ module.exports = {
       if (fact.length > 3) {
         await addToPinecone(authorId, authorName, 'user profile', fact, PINECONE_INDEX_URL);
       }
-
+      
       // 10) Log the bot reply as well
       if (logCh) {
         await logCh.send(`**Chocomint**: ${reply}`);
